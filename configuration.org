@@ -112,4 +112,25 @@ To add more modules onto our configuration, we can add them to =modules=.
   };
 #+end_src
 
-testing
+We also want to configure and use =home-manager= with this flake, so we define the attribute =homeConfigurations=.
+
+If we want to activate =home-manager=, we use:
+#+begin_src bash
+  home-manager --flake .#tautology@civilisation
+#+end_src
+
+We define =pkgs=, as =home-manager= requires it.
+
+#+begin_src nix :tangle "flake.nix"
+      homeConfigurations = {
+        "tautology@civilisation" = home-manager.lib.homeManagerConfiguratioen {
+          pkgs = nixpkgs.legacyPackages.m86_64-linux;
+          extraSpecialArgs = {inherit inputs outputs};
+          modules = [./home-manager/home.nix];
+        };
+      };
+    };
+  };
+#+end_src
+
+Now that we have defined our main =flake.nix=, let's move onto other important pieces of our configuration.
