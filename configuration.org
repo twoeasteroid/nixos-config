@@ -1,0 +1,113 @@
+#+title: Literate NixOS Configuration
+#+author: twoeasteroid
+
+NixOS is really hard to understand, and seems to have a hate for centralised documentation, so this is my literate configuration of NixOS that seeks to organise and explain my choices, since it seems to work well for Emacs.
+
+* Main NixOS Flake (=flake.nix=)
+Here is an apt description of flakes, credits to [[https://zero-to-nix.com/concepts/flakes][Zero to Nix]].
+#+begin_quote
+It may be helpful to think of flakes as processors of Nix code. They take Nix expressions as input and output things that Nix can use, like package definitions, development environments, or NixOS configurations.
+#+end_quote
+
+Flakes are also composable, meaning that you can take in flakes in the inputs, and effectively have its functionality.
+
+A good descriptor of what makes up a flake is [[https://vtimofeenko.com/posts/practical-nix-flake-anatomy-a-guided-tour-of-flake.nix/][Practical Nix flake anatomy]].
+
+The most minimal flake would be one that takes in no inputs and returns nothing (an empty attribute set), described below.
+#+begin_src nix
+  { outputs = _: { }; }
+#+end_src
+
+However, we want to be able to use things like =nixpkgs= or =home-manager= in our configuration, so we must reference them in our flake.
+
+** =flake.nix='s Description
+A description isn't /strictly/ necessary, but why not have one?
+#+begin_src nix :tangle "flake.nix"
+  {
+    description = "twoeasteroid's Literate NixOS configuration1";
+#+end_src
+
+** =flake.nix='s Inputs
+For a NixOS configuration, we obviously want to reference things like =nixpkgs= or =home-manager=, so we need to describe it in our inputs.
+
+A flake can take two things as inputs:
+1. other flakes
+2. file paths
+
+Also, for well-known inputs like =nixpkgs= or =home-manager= (flakes in the [[https://github.com/NixOS/flake-registry?tab=readme-ov-file][public registry]]), you technically don't have to describe them in the inputs, but it's recommended to do so.
+
+#+begin_src nix :tangle "flake.nix"
+  inputs = {
+    nixpkgs = {
+      url = "github:nixos/nixpkgs/nixos-23.11"
+    };
+
+#+end_src
+
+If we want to have a flake reference in the input depend on a different version of their dependencies (for example, have =home-manager= depend on the version of =nixpkgs= that we have right now, and not it's default one), we can use the syntax:
+#+begin_src nix
+  <flakeref>.inputs.<transitiveDep>.follows = "<anotherFlakeRef>" # replace <...> with its respective contents
+#+end_src
+
+We do this in our configuration for =home-manager=.
+
+#+begin_src nix :tangle "flake.nix"
+  home-manager = {
+      url = "github:nix-community/home-manager/release-23.11";
+      inputs.nixpkgs.follows = "nixpkgs";
+    }
+  };
+#+end_src
+
+** =flake.nix='s Outputs
+All Nix flakes need to return some output, whether that be a package, a configuration, or some random Nix code.
+
+There are two broad categories of outputs:
+ - System-specific outputs :: Outputs for a specific system (like aarch64 or linux, darwin, x86 _ 64), maybe on account of needing a system specific dependency, like =systemd=.
+ - System-independant outputs :: These are outputs that are either fully system-agnostic, or handle the dependancy in the code (using an alternative dependency for different systems)
+
+The output attribute in our flake needs to be a function returning an attribute set, with a few recognised names in the standard flake schema.
+
+We also reference the inputs of the flake in our 'outputs' function, to be able to reference them.
+
+#+begin_src nix :tangle "flake.nix"
+  outputs = { self, nixpkgs, home-manager, ... }
+    @ inputs:
+#+end_src
+
+We might want to reference something in outputs, so we =inherit= it, likely using the power of laziness (might be hugely wrong on this as I have limited understanding of why this is useful).
+
+#+begin_src nix :tangle "flake.nix"
+  let
+    inherit (self) outputs;
+  in {
+#+end_src
+
+By inheriting =(self) outputs=, we are essentially saying the equivalent of:
+
+#+begin_src nix
+  let
+    outputs = self.outputs;
+  in {
+    ... # stuff
+  }
+#+end_src
+
+Now we have to define our configuration. In the flake schema, the attribute that we have to set is =nixosConfigurations=, which should have a value of whatever the function =nixpkgs.lib.nixosSystem= outputs (can't find the function documentation D: ).
+
+To rebuild our system from now on, use:
+
+#+begin_src bash
+  nixos-rebuild --flake .#civilisation
+#+end_src
+
+To add more modules onto our configuration, we can add them to =modules=.
+
+#+begin_src nix :tangle "flake.nix"
+  nixosConfigurations = {
+    civilisation = nixpkgs.lib.nixosSystem {
+      specialArgs = {inherit inputs outputs};
+      modules = [./nixos/configuration.nix];
+    };
+  };
+#+end_src
